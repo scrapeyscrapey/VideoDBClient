@@ -15,14 +15,14 @@ class DBWriter:
         self.video_path = ""
         # Set db connection
         self.conn = sqlite3.connect('video_database.db')
-        self.cur = (self.conn).cursor()
+        self.cur = self.conn.cursor()
         # Get default destination directory from config
         self.default_destination_directory = self.get_default_destination_directory()
         self.create_tables()
 
     def create_tables(self):
-        (self.cur).execute('''CREATE TABLE IF NOT EXISTS videos (
-            title TEXT, 
+        self.cur.execute('''CREATE TABLE IF NOT EXISTS videos (
+            title TEXT UNIQUE, 
             tags TEXT, 
             rating INTEGER, 
             source_url TEXT, 
@@ -30,11 +30,10 @@ class DBWriter:
             duration TEXT, 
             source_directory TEXT, 
             destination_directory TEXT)''')
-        (self.cur).execute('''CREATE TABLE IF NOT EXISTS config (
+        self.cur.execute('''CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
             value TEXT)''')
-        (self.conn).commit()
-        # (self.conn).close()
+        self.conn.commit()
         
     def get_default_destination_directory(self):
         (self.cur).execute("SELECT value FROM config WHERE key='default_destination_directory'")
@@ -60,22 +59,32 @@ class DBWriter:
         (self.conn).commit()
         if debug is True:
             print("Default directory saved!: {}".format(directory))
-        # (self.conn).close()
-
-
         
     def add_video(self, title, tags, rating, source_url, resolution, duration, source_directory, destination_directory):
-        (self.cur).execute("INSERT INTO videos VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                  (title, ','.join(tags), rating, source_url, resolution, duration, source_directory, destination_directory))
-        (self.conn).commit()
-        # (self.conn).close()
+        try:
+            self.cur.execute("INSERT INTO videos VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                          (title, ','.join(tags), rating, source_url, resolution, duration, source_directory, destination_directory))
+            self.conn.commit()
+        except sqlite3.IntegrityError as e:
+            while choice != "overwrite" and choice != "merge" and choice != "discard":
+                # If title already exists, handle conflict
+                choice = messagebox.askquestion("Duplicate Title", "A video with the same title already exists. Would you like to overwrite the file?")
+                if choice == 'overwrite':  # Overwrite existing entry
+                    self.cur.execute("DELETE FROM videos WHERE title=?", (title,))
+                    self.add_video(title, tags, rating, source_url, resolution, duration, source_directory, destination_directory)
+                elif choice == 'merge':  # Merge tags
+                    existing_tags = self.cur.execute("SELECT tags FROM videos WHERE title=?", (title,)).fetchone()[0].split(',')
+                    merged_tags = list(set(existing_tags + tags))
+                    self.cur.execute("UPDATE videos SET tags=? WHERE title=?", (','.join(merged_tags), title))
+                    self.conn.commit()
+                elif choice == 'discard':  # Discard new entry
+                    messagebox.showinfo("Duplicate Title", "New entry discarded.")
+                else:
+                    messagebox.showinfo("Invalid response", "Please try again.")
+                    continue
+        except Exception as e:
+            print("Error:", e)
 
-        if os.path.exists(source_directory):
-            if not os.path.exists(destination_directory):
-                os.makedirs(destination_directory)
-
-            # Move or copy the video file to the destination directory
-            shutil.copy(self.video_path, destination_directory)
         
     def get_video_info(self, video_path):
         cap = cv2.VideoCapture(video_path)
