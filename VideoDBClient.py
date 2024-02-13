@@ -7,7 +7,6 @@ import cv2
 import threading
 import shutil
 from UserInterface import UserInterface
-from DBWriter import DBWriter
 
 debug = True
 
@@ -17,7 +16,6 @@ class VideoDBClient:
             print("Building VideoDBClient...")
         self.root = root
         self.debug = True
-        self.first_video = True
         self.ui = UserInterface(self.root)
 
         if debug is True:
@@ -257,26 +255,10 @@ class VideoDBClient:
     #         self.ui.destination_directory_entry.delete(0, tk.END)
     #         self.ui.destination_directory_entry.insert(0, destination_directory_str)
 
-    # Function to handle button click to select video files
-    def select_video_files(self):
-        files = filedialog.askopenfilenames(filetypes=[("Video files", "*.mp4 *.avi *.mkv")])
-        for file in files:
-            self.ui.queue_listbox.insert(tk.END, file)
+
     # Other functions
 
 # ... (rest of the functions)
-@staticmethod
-def get_video_info(video_path):
-    cap = cv2.VideoCapture(video_path)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    resolution = f"{width}x{height}"
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    duration = int(total_frames / fps)
-    duration_str = f"{duration // 3600:02d}:{(duration % 3600) // 60:02d}:{duration % 60:02d}"
-    cap.release()
-    return resolution, duration_str
 
 if __name__ == "__main__":
     root = tk.Tk()

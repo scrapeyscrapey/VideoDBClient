@@ -5,7 +5,6 @@ import cv2
 import subprocess
 import os
 from DBWriter import DBWriter
-from VideoDBClient import VideoDBClient, get_video_info
 
 debug = True
 
@@ -13,6 +12,7 @@ class UserInterface:
     def __init__(self, root):
         self.root = root
         self.tags = []
+        self.first_video = True
         self.db_writer = DBWriter()
         self.setup_ui()
 
@@ -20,9 +20,16 @@ class UserInterface:
         # UI setup code here
 
         # Other UI elements and bindings
+        
+        
+        # Default destination directory entry
+        self.default_destination_directory_label = tk.Label(self.root, text="Default Destination Directory:")
+        self.default_destination_directory_label.pack()
+        self.db_writer.set_default_destination_directory(self.root)
+        
         self.set_default_destination_directory_button = tk.Button(self.root, text="Set Default Destination Directory", command=self.db_writer.set_default_destination_directory)
         self.set_default_destination_directory_button.pack()
-
+        
         # Title entry
         self.title_label = tk.Label(self.root, text="Title:")
         self.title_label.pack()
@@ -78,13 +85,6 @@ class UserInterface:
         self.destination_directory_entry = tk.Entry(self.root)
         self.destination_directory_entry.pack()
 
-        # Default destination directory entry
-        self.default_destination_directory_label = tk.Label(self.root, text="Default Destination Directory:")
-        self.default_destination_directory_label.pack()
-        self.default_destination_directory_entry = tk.Entry(self.root)
-        self.default_destination_directory_entry.pack()
-        self.default_destination_directory_entry.insert(0, self.db_writer.default_destination_directory)
-
         # Button to select video files
         self.select_video_button = tk.Button(self.root, text="Select Video Files", command=self.select_video_files)
         self.select_video_button.pack()
@@ -96,7 +96,7 @@ class UserInterface:
         self.queue_listbox.pack()
 
         # Button to add video
-        self.add_button = tk.Button(self.root, text="Add to DB", command=self.db_writer.add_video_to_db)
+        self.add_button = tk.Button(self.root, text="Add to DB", command=self.add_video_to_db)
         self.add_button.pack()
 
         # Button to browse videos
@@ -111,10 +111,6 @@ class UserInterface:
         self.discard_button = tk.Button(self.root, text="Discard Video", command=self.discard_video)
         self.discard_button.pack()
 
-        # Button to set default destination directory
-        self.set_default_destination_button = tk.Button(self.root, text="Set Default Destination Directory", command=self.db_writer.set_default_destination_directory)
-        self.set_default_destination_button.pack()
-
         # Close VLC windows when the UI is closed
         (self.root).protocol("WM_DELETE_WINDOW", self.close_vlc_windows)
 
@@ -124,7 +120,7 @@ class UserInterface:
         source_url = self.source_url_entry.get()
         source_directory = self.source_directory_entry.get()
         
-        resolution, duration = get_video_info(self.queue_listbox.get(tk.ACTIVE))
+        resolution, duration = self.db_writer.get_video_info(self.queue_listbox.get(tk.ACTIVE))
         
         if self.db_writer.default_destination_directory:
             destination_directory = self.db_writer.default_destination_directory
@@ -132,7 +128,7 @@ class UserInterface:
             destination_directory = self.destination_directory_entry.get()
 
         self.db_writer.add_video(title, self.tags, rating, source_url, resolution, duration, source_directory, destination_directory)
-        messagebox.showinfo("Success", "Video added to database")
+        messagebox.showinfo("Success", "Video {} added to database".format(title))
         
     def add_tags(self, input_box):
         tag = self.input_box.get()
@@ -225,6 +221,12 @@ class UserInterface:
 
         self.vlc_process = subprocess.Popen(['vlc', video_path])
 
+    # Function to handle button click to select video files
+    def select_video_files(self):
+        files = filedialog.askopenfilenames(filetypes=[("Video files", "*.mp4 *.avi *.mkv")])
+        for file in files:
+            self.queue_listbox.insert(tk.END, file)
+
     def discard_video(self):
         selected_index = self.queue_listbox.curselection()
         if selected_index:
@@ -236,7 +238,7 @@ class UserInterface:
         (self.db_writer.cur).execute("SELECT * FROM videos")
         for row in (self.db_writer.cur).fetchall():
             tk.Label(browse_window, text=row).pack()
-        (self.db_writer.conn).close()
+        # (self.db_writer.conn).close()
 
     def close_vlc_windows(self):
         if hasattr(self, 'vlc_process') and self.vlc_process.poll() is None:
