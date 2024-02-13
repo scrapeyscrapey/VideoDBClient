@@ -16,6 +16,7 @@ class VideoDBClient:
         self.default_destination_directory = ""
         self.video_path = ""
         self.tags = []
+        self.first_video = True
 
         self.create_tables()
         # Get default destination directory from config
@@ -58,7 +59,7 @@ class VideoDBClient:
         self.title_entry.pack()
 
         # Input box for tags
-        self.tags_label = tk.Label(self.root, text="Tags (Press ',' to add tag):")
+        self.tags_label = tk.Label(self.root, text="Tags (Press 'Enter' to add tag):")
         self.tags_label.pack()
         self.input_box = tk.Entry(self.root)
         self.input_box.pack()
@@ -147,7 +148,7 @@ class VideoDBClient:
         (self.root).protocol("WM_DELETE_WINDOW", self.close_vlc_windows)
     
         
-    def add_tags(self):
+    def add_tags(self, input_box):
         tag = self.input_box.get()
         if tag:
             self.tags.append(tag)
@@ -156,13 +157,16 @@ class VideoDBClient:
             
     # Function to remove a tag
     def remove_tag(self, event):
-        global tags
         x, y = event.x, event.y
         item = self.tags_frame.find_closest(x, y)
-        if self.tags_frame.itemcget(item, "text") == "x":
-            index = self.tags_frame.gettags(item)[0] // 20
+        tags = self.tags_frame.gettags(item)
+        if "tags" in tags:
+            index = tags.index("tags") // 20
             self.tags.pop(index)
             self.update_tag_display()
+
+
+
         
     # Function to update tag display area
     def update_tag_display(self):
@@ -189,8 +193,6 @@ class VideoDBClient:
         self.add_video(title, self.tags, rating, source_url, resolution, duration, source_directory, destination_directory)
         messagebox.showinfo("Success", "Video added to database")
 
-        self.queue_listbox.delete(0)
-
     def browse_videos(self):
         browse_window = tk.Toplevel(self.root)
         browse_window.title("Browse Entries")
@@ -214,19 +216,53 @@ class VideoDBClient:
         return resolution, duration_str
 
     def open_video(self):
+        if self.first_video is False:
+            self.queue_listbox.delete(0)
+        self.first_video = False
         if self.queue_listbox.size() > 0:
             self.video_path = self.queue_listbox.get(tk.ACTIVE)
             threading.Thread(target=self.play_video, args=(self.video_path,)).start()
             
             # Add this line to auto-fill the text boxes with video data
             self.next_video_button.config(state="disabled")  # Disable the button temporarily
-            self.auto_fill_textboxes_after_play(self.video_path)  # Call auto_fill_textboxes_after_play here
+            # self.auto_fill_textboxes_after_play(self.video_path)  # Call auto_fill_textboxes_after_play here
+            (self.root).after(1000, self.auto_fill_textboxes, self.video_path)
 
-    def auto_fill_textboxes_after_play(self, video_path):
-        # Wait for a short duration to allow VLC to start playing the video
-        (self.root).after(2000, self.auto_fill_textboxes, video_path)
-        self.next_video_button.config(state="enabled")  # Disable the button temporarily
+    def auto_fill_textboxes(self, video_path):
+        if debug is True:
+            print("Auto filling text boxes...")
+        cap = cv2.VideoCapture(video_path)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        resolution = f"{width}x{height}"
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        duration = int(total_frames / fps) if fps != 0 else 0  # Check for zero FPS
+        duration_str = f"{duration // 3600:02d}:{(duration % 3600) // 60:02d}:{duration % 60:02d}"
+        cap.release()
 
+        # Fill the textboxes
+        self.resolution_entry.delete(0, tk.END)
+        self.resolution_entry.insert(0, resolution)
+        self.duration_entry.delete(0, tk.END)
+        self.duration_entry.insert(0, duration_str)
+
+        # Extract video title from the file path
+        video_title = os.path.basename(video_path)
+        
+        source_directory_str = video_path
+
+        if self.default_destination_directory:
+            destination_directory_str = self.default_destination_directory
+            # Update the textboxes in the UI from the main thread
+        else:
+            destination_directory_str = "-1"
+        self.root.after(0, self.update_textboxes_in_ui, video_title, resolution, duration_str, source_directory_str, destination_directory_str)
+        if debug is True:
+            print("Auto filled text boxes.")
+
+        # Enable the button after filling the textboxes
+        self.next_video_button.config(state="normal")  # Set state to "normal" instead of "enabled"
 
     def play_video(self, video_path):
         if hasattr(self, 'vlc_process') and self.vlc_process.poll() is None:
@@ -258,29 +294,8 @@ class VideoDBClient:
             # Move or copy the video file to the destination directory
             shutil.copy(self.video_path, destination_directory)
 
-    def auto_fill_textboxes(self, video_path):
-        if debug is True:
-            print("Auto filling text boxes...")
-        cap = cv2.VideoCapture(video_path)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        resolution = f"{width}x{height}"
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        duration = int(total_frames / fps)
-        duration_str = f"{duration // 3600:02d}:{(duration % 3600) // 60:02d}:{duration % 60:02d}"
-        cap.release()
-
-        # Extract video title from the file path
-        video_title = os.path.basename(video_path)
-
-        # Update the textboxes in the UI from the main thread
-        self.root.after(0, self.update_textboxes_in_ui, video_title, resolution, duration_str)
-
-        if debug is True:
-            print("Auto filled text boxes.")
             
-    def update_textboxes_in_ui(self, video_title, resolution, duration_str):
+    def update_textboxes_in_ui(self, video_title, resolution, duration_str, source_directory_str, destination_directory_str):
         # Update the title, resolution, and duration textboxes
         self.title_entry.delete(0, tk.END)
         self.title_entry.insert(0, video_title)
@@ -288,6 +303,13 @@ class VideoDBClient:
         self.resolution_entry.insert(0, resolution)
         self.duration_entry.delete(0, tk.END)
         self.duration_entry.insert(0, duration_str)
+        self.source_directory_entry.delete(0, tk.END)
+        self.source_directory_entry.insert(0, source_directory_str)
+        if debug is True:
+            print("destination_directory_str: {}".format(destination_directory_str))
+        if destination_directory_str != "-1":
+            self.destination_directory_entry.delete(0, tk.END)
+            self.destination_directory_entry.insert(0, destination_directory_str)
 
     def set_default_destination_directory(self):
         # conn = sqlite3.connect('video_database.db')
