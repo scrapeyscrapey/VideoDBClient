@@ -1,0 +1,12 @@
+1. 
+    Find all relevant video folders
+2. 
+    Create a list of them here
+3. 
+    Combine categories
+4. 
+    Go to VLC records
+5. 
+    Create filtered directory
+6. 
+    Find a tagging solution OR make a python app with chatgpt
